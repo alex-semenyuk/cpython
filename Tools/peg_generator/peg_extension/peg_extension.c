@@ -124,7 +124,6 @@ get_memo_stats(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(ignored))
 #endif
 }
 
-// TODO: Write to Python's sys.stdout instead of C's stdout.
 static PyObject *
 dump_memo_stats(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(ignored))
 {
@@ -133,6 +132,20 @@ dump_memo_stats(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(ignored))
     if (list == NULL) {
         return NULL;
     }
+
+    PyObject *sys_module = PyImport_ImportModule("sys");
+    if (sys_module == NULL) {
+        Py_DECREF(list);
+        return NULL;
+    }
+
+    PyObject *stdout_obj = PyObject_GetAttrString(sys_module, "stdout");
+    Py_DECREF(sys_module);
+    if (stdout_obj == NULL) {
+        Py_DECREF(list);
+        return NULL;
+    }
+
     Py_ssize_t len = PyList_Size(list);
     for (Py_ssize_t i = 0; i < len; i++) {
         PyObject *value = PyList_GetItem(list, i);  // Borrowed reference.
@@ -141,9 +154,32 @@ dump_memo_stats(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(ignored))
             break;
         }
         if (count > 0) {
-            printf("%4zd %9ld\n", i, count);
+            PyObject *output = PyUnicode_FromFormat("%4zd %9ld\n", i, count);
+            if (output == NULL) {
+                Py_DECREF(stdout_obj);
+                Py_DECREF(list);
+                return NULL;
+            }
+
+            PyObject *result = PyObject_CallMethod(stdout_obj, "write", "O", output);
+            Py_DECREF(output);
+            if (result == NULL) {
+                Py_DECREF(stdout_obj);
+                Py_DECREF(list);
+                return NULL;
+            }
+            Py_DECREF(result);
         }
     }
+
+    PyObject *result = PyObject_CallMethod(stdout_obj, "flush", NULL);
+    Py_DECREF(stdout_obj);
+    if (result == NULL) {
+        Py_DECREF(list);
+        return NULL;
+    }
+    Py_DECREF(result);
+
     Py_DECREF(list);
 #endif
     Py_RETURN_NONE;
